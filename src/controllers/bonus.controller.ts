@@ -50,6 +50,35 @@ export async function enqueueExpireAccrualsJob(
   next: NextFunction,
 ): Promise<void> {
   try {
+    await bonusQueue.add(
+      'expireAccruals',
+      { createdAt: new Date().toISOString() },
+      {
+        jobId: 'expire-accruals',
+
+        attempts: 3,
+
+        backoff: {
+          type: 'fixed',
+          delay: 1000
+        },
+
+        removeOnComplete: true
+      }
+    );
+
+    res.json({ queued: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/*export async function enqueueExpireAccrualsJob(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
     await bonusQueue.add('expireAccruals', {
       createdAt: new Date().toISOString(),
     });
@@ -58,4 +87,4 @@ export async function enqueueExpireAccrualsJob(
   } catch (error) {
     next(error);
   }
-}
+}*/
