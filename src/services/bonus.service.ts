@@ -1,4 +1,7 @@
+import { User } from '../models/User';
 import { BonusTransaction } from '../models/BonusTransaction';
+import { sequelize } from '../db';
+import { Op } from 'sequelize';
 
 type AppError = Error & { status?: number };
 
@@ -8,36 +11,64 @@ function createAppError(message: string, status: number): AppError {
   return error;
 }
 
-export async function getUserBalance(userId: string): Promise<number> {
-  const accruals = await BonusTransaction.findAll({
+export async function getUserBalance(userId: string, transaction?: any): Promise<number> {
+  const now = new Date();
+
+  const totalAccruals = await BonusTransaction.sum('amount', {
     where: {
       user_id: userId,
       type: 'accrual',
+      expires_at: { [Op.gt]: now } // TODO: учитывать expires_at — FIXED
     },
-  });
+    transaction
+  }) || 0;
 
-  const balance = accruals.reduce((sum, tx) => sum + tx.amount, 0);
+  const totalSpends = await BonusTransaction.sum('amount', {
+    where: {
+      user_id: userId,
+      type: 'spend'
+    },
+    transaction
+  }) || 0; // TODO: учитывать spend — FIXED
 
-  // TODO: учитывать expires_at
-  // TODO: учитывать spend
-  // TODO: учитывать конкурентные списания
-  return balance;
+  return totalAccruals - totalSpends;
 }
 
-export async function spendBonus(userId: string, amount: number): Promise<void> {
+export async function spendBonus(userId: string, amount: number, requestId: string) {
   // Legacy-набросок: намеренно наивная реализация для задания.
   // Здесь специально нет транзакции, защиты от гонок и идемпотентности.
-  const balance = await getUserBalance(userId);
+  return await sequelize.transaction(async (t) => {
 
-  if (balance < amount) {
-    throw createAppError('Not enough bonus', 400);
-  }
+    const existing = await BonusTransaction.findOne({
+      where: { user_id: userId, request_id: requestId },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
 
-  await BonusTransaction.create({
-    user_id: userId,
-    type: 'spend',
-    amount,
-    expires_at: null,
-    request_id: null,
+    if (existing) {
+      if (existing.amount === amount) return { success: true, duplicated: true };
+      throw createAppError('Conflict: same requestId with different payload', 409);
+    }
+
+    await User.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    const currentBalance = await getUserBalance(userId, t);
+
+    if (currentBalance < amount) {
+      throw createAppError('Insufficient balance', 400);
+    }
+
+    await BonusTransaction.create({
+      user_id: userId,
+      type: 'spend',
+      amount,
+      request_id: requestId,
+      expires_at: null
+    }, { transaction: t });
+
+    return { success: true, duplicated: false };
   });
 }

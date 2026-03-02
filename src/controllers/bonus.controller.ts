@@ -19,14 +19,27 @@ export async function spendUserBonus(
   try {
     const amount = Number(req.body?.amount);
 
+    const requestId = (req.headers['idempotency-key'] as string) || req.body?.requestId;
+
+    if (!requestId) {
+      throw createAppError('requestId is required (in body or Idempotency-Key header)', 400);
+    }
+
     if (!Number.isInteger(amount) || amount <= 0) {
       throw createAppError('amount must be a positive integer', 400);
     }
 
-    await spendBonus(req.params.id, amount);
 
-    res.json({ success: true });
-  } catch (error) {
+
+    const result = await spendBonus(req.params.id, amount, requestId);
+
+
+    res.json(result);
+  } catch (error: any) {
+    if (error.status) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
     next(error);
   }
 }
