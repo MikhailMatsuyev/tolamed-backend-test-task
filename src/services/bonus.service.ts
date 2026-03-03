@@ -39,6 +39,11 @@ export async function spendBonus(userId: string, amount: number, requestId: stri
   // Здесь специально нет транзакции, защиты от гонок и идемпотентности.
   return await sequelize.transaction(async (t) => {
 
+    await User.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
     const existing = await BonusTransaction.findOne({
       where: { user_id: userId, request_id: requestId },
       transaction: t,
@@ -49,11 +54,6 @@ export async function spendBonus(userId: string, amount: number, requestId: stri
       if (existing.amount === amount) return { success: true, duplicated: true };
       throw createAppError('Conflict: same requestId with different payload', 409);
     }
-
-    await User.findByPk(userId, {
-      transaction: t,
-      lock: t.LOCK.UPDATE
-    });
 
     const currentBalance = await getUserBalance(userId, t);
 

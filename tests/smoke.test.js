@@ -13,7 +13,8 @@ const request = (method, path, body, extraHeaders = {}) => {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try {
-          resolve({ status: res.statusCode, data: data ? JSON.parse(data) : {} });
+          const parsed = data ? JSON.parse(data) : {};
+          resolve({ status: res.statusCode, data: parsed });
         } catch (e) {
           resolve({ status: res.statusCode, data: {} });
         }
@@ -26,10 +27,11 @@ const request = (method, path, body, extraHeaders = {}) => {
 };
 
 describe('Bonus System Full Integration Tests', () => {
-  const userId = '11111111-1111-1111-1111-111111111111';
+  const aliceId = '11111111-1111-1111-1111-111111111111';
+  const bobId   = '22222222-2222-2222-2222-222222222222';
 
   test('Race Condition: Concurrent requests', async () => {
-    const path = '/users/' + userId + '/spend';
+    const path = '/users/' + aliceId + '/spend';
     const ridBase = 'race-' + Date.now();
 
     const promises = [1, 2, 3, 4, 5].map(i =>
@@ -44,13 +46,16 @@ describe('Bonus System Full Integration Tests', () => {
 
   test('Idempotency and 409 Conflict', async () => {
     const rid = 'idemp-' + Date.now();
-    const path = '/users/' + userId + '/spend';
+    const path = '/users/' + bobId + '/spend';
     const payload = { amount: 10, requestId: rid };
 
     const res1 = await request('POST', path, payload);
     const res2 = await request('POST', path, payload);
 
+    expect(res1.status).toBe(200);
     expect(res1.data.duplicated).toBe(false);
+
+    expect(res2.status).toBe(200);
     expect(res2.data.duplicated).toBe(true);
 
     const res3 = await request('POST', path, { amount: 99, requestId: rid });

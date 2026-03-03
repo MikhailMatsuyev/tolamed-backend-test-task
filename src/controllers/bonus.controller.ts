@@ -31,9 +31,9 @@ export async function spendUserBonus(
 
     const result = await spendBonus(req.params.id, amount, requestId);
     res.json(result);
-  } catch (error: any) {
-    if (error.status) {
-      res.status(error.status).json({ error: error.message });
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as any).status) {
+      res.status((error as any).status).json({ error: error.message });
       return;
     }
     next(error);
