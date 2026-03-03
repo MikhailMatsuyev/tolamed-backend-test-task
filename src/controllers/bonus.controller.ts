@@ -29,11 +29,7 @@ export async function spendUserBonus(
       throw createAppError('amount must be a positive integer', 400);
     }
 
-
-
     const result = await spendBonus(req.params.id, amount, requestId);
-
-
     res.json(result);
   } catch (error: any) {
     if (error.status) {
@@ -72,19 +68,3 @@ export async function enqueueExpireAccrualsJob(
     next(error);
   }
 }
-
-/*export async function enqueueExpireAccrualsJob(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    await bonusQueue.add('expireAccruals', {
-      createdAt: new Date().toISOString(),
-    });
-
-    res.json({ queued: true });
-  } catch (error) {
-    next(error);
-  }
-}*/
