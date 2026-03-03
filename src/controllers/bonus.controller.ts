@@ -19,14 +19,23 @@ export async function spendUserBonus(
   try {
     const amount = Number(req.body?.amount);
 
+    const requestId = (req.headers['idempotency-key'] as string) || req.body?.requestId;
+
+    if (!requestId) {
+      throw createAppError('requestId is required (in body or Idempotency-Key header)', 400);
+    }
+
     if (!Number.isInteger(amount) || amount <= 0) {
       throw createAppError('amount must be a positive integer', 400);
     }
 
-    await spendBonus(req.params.id, amount);
-
-    res.json({ success: true });
-  } catch (error) {
+    const result = await spendBonus(req.params.id, amount, requestId);
+    res.json(result);
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as any).status) {
+      res.status((error as any).status).json({ error: error.message });
+      return;
+    }
     next(error);
   }
 }
@@ -37,9 +46,22 @@ export async function enqueueExpireAccrualsJob(
   next: NextFunction,
 ): Promise<void> {
   try {
-    await bonusQueue.add('expireAccruals', {
-      createdAt: new Date().toISOString(),
-    });
+    await bonusQueue.add(
+      'expireAccruals',
+      { createdAt: new Date().toISOString() },
+      {
+        jobId: 'expire-accruals',
+
+        attempts: 3,
+
+        backoff: {
+          type: 'fixed',
+          delay: 1000
+        },
+
+        removeOnComplete: true
+      }
+    );
 
     res.json({ queued: true });
   } catch (error) {
